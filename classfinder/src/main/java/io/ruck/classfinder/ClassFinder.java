@@ -60,7 +60,7 @@ public final class ClassFinder {
      * Name sanitization pattern.
      */
     private static final Pattern NAME_PATTERN = Pattern
-            .compile("[a-zA-Z0-9-_]+");
+            .compile("[a-zA-Z0-9-_\\.]+");
 
     /**
      * Returns a named ClassFinder instance. This may return a previously

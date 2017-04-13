@@ -26,20 +26,21 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
+import org.eclipse.aether.impl.ArtifactResolver;
 import org.reflections.Reflections;
 import org.reflections.util.ConfigurationBuilder;
 
@@ -47,7 +48,7 @@ import org.reflections.util.ConfigurationBuilder;
  *
  * @author ruckc
  */
-@Mojo(name = "classfinder", defaultPhase = LifecyclePhase.PROCESS_CLASSES)
+@Mojo(name = "classfinder", defaultPhase = LifecyclePhase.PROCESS_CLASSES, requiresDependencyResolution = ResolutionScope.COMPILE)
 public class ClassFinderMojo extends AbstractMojo {
 
     @Parameter(required = true)
@@ -59,16 +60,11 @@ public class ClassFinderMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
     private MavenProject project;
 
-    /**
-     * Injected value of our classpath elements. This is used in conjunction
-     * with the Reflections API in order to help identify where annotations
-     * appear on methods.
-     */
-    @Parameter(defaultValue = "${project.compileClasspathElements}", readonly = true, required = true)
-    private List<String> projectClasspathElements;
-
     @Parameter(defaultValue = "${project.build.directory}/classes", required = true, readonly = true)
     private File classFolder;
+
+    @Component
+    private ArtifactResolver resolver;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -78,23 +74,25 @@ public class ClassFinderMojo extends AbstractMojo {
             List<String> compileSourceOutputs = Collections.singletonList(project.getBuild().getOutputDirectory());
             URL[] sourceFiles = buildMavenClasspath(compileSourceOutputs);
 
+            ClassLoader projectClassLoader = getClassLoader();
+
             List<String> results = new ArrayList<>();
             Reflections reflections = new Reflections(
                     new ConfigurationBuilder()
                             .setUrls(sourceFiles)
-                            .addClassLoader(getClassLoader())
+                            .addClassLoader(projectClassLoader)
             );
             if (filter.getSubTypesOf() != null) {
                 for (String className : filter.getSubTypesOf()) {
                     getLog().debug("Processing subtypes of " + className);
-                    Class<?> cls = Class.forName(className);
+                    Class<?> cls = projectClassLoader.loadClass(className);
                     reflections.getSubTypesOf(cls).stream().map(c -> c.getName()).forEach(results::add);
                 }
             }
             if (filter.getTypesAnnotatedWith() != null) {
                 for (String annotation : filter.getTypesAnnotatedWith()) {
                     getLog().debug("Processing annotation " + annotation);
-                    Class<?> maybeAnnotation = Class.forName(annotation);
+                    Class<?> maybeAnnotation = projectClassLoader.loadClass(annotation);
                     Class<? extends Annotation> cls = maybeAnnotation.asSubclass(Annotation.class);
                     reflections.getTypesAnnotatedWith(cls).stream().map(c -> c.getName()).forEach(results::add);
                 }
@@ -106,12 +104,16 @@ public class ClassFinderMojo extends AbstractMojo {
     }
 
     public ClassLoader getClassLoader() throws DependencyResolutionRequiredException, MojoExecutionException {
-        // the project classpath includes the source roots plus the transitive
-        // dependencies according to our Mojo annotation's requiresDependencyResolution
-        // attribute.
-        URL[] projectClasspath = buildMavenClasspath(this.projectClasspathElements);
+        getLog().debug("   compileClasspathElements: " + project.getCompileClasspathElements());
+        getLog().debug("   runtimeClasspathElements: " + project.getRuntimeClasspathElements());
 
-        URLClassLoader projectClassloader = new URLClassLoader(projectClasspath);
+        URL[] compileClasspath = buildMavenClasspath(project.getCompileClasspathElements());
+
+        for (Dependency dependency : project.getDependencies()) {
+
+        }
+
+        URLClassLoader projectClassloader = new URLClassLoader(compileClasspath);
 
         return projectClassloader;
     }
@@ -139,13 +141,17 @@ public class ClassFinderMojo extends AbstractMojo {
     }
 
     public void writeList(String name, List<String> results) throws IOException {
-        Path parent = Paths.get("META-INF", "classfinder");
-        Path outputFile = classFolder.toPath().resolve(parent.resolve(name));
-        Files.createDirectories(outputFile.getParent());
-        Files.createFile(outputFile);
-        try (OutputStream out = Files.newOutputStream(outputFile);
-                PrintStream print = new PrintStream(out)) {
-            results.stream().peek(line -> getLog().info("   Adding " + line + " to " + name)).forEach(print::println);
+        if (results != null && results.size() > 0) {
+            Path parent = Paths.get("META-INF", "classfinder");
+            Path outputFile = classFolder.toPath().resolve(parent.resolve(name));
+            Files.createDirectories(outputFile.getParent());
+            Files.createFile(outputFile);
+            try (OutputStream out = Files.newOutputStream(outputFile);
+                    PrintStream print = new PrintStream(out)) {
+                results.stream().peek(line -> getLog().info("   Adding " + line + " to " + name)).forEach(print::println);
+            }
+        } else {
+            getLog().warn("Skipping " + name + " due to no results");
         }
     }
 }
