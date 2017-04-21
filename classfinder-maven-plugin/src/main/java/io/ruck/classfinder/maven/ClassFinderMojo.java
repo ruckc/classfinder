@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -86,7 +87,9 @@ public class ClassFinderMojo extends AbstractMojo {
                 for (String className : filter.getSubTypesOf()) {
                     getLog().debug("Processing subtypes of " + className);
                     Class<?> cls = projectClassLoader.loadClass(className);
-                    reflections.getSubTypesOf(cls).stream().map(c -> c.getName()).forEach(results::add);
+                    reflections.getSubTypesOf(cls).stream()
+                            .filter(c -> !Modifier.isAbstract(c.getModifiers()))
+                            .map(c -> c.getName()).forEach(results::add);
                 }
             }
             if (filter.getTypesAnnotatedWith() != null) {
@@ -94,7 +97,9 @@ public class ClassFinderMojo extends AbstractMojo {
                     getLog().debug("Processing annotation " + annotation);
                     Class<?> maybeAnnotation = projectClassLoader.loadClass(annotation);
                     Class<? extends Annotation> cls = maybeAnnotation.asSubclass(Annotation.class);
-                    reflections.getTypesAnnotatedWith(cls).stream().map(c -> c.getName()).forEach(results::add);
+                    reflections.getTypesAnnotatedWith(cls).stream()
+                            .filter(c -> !Modifier.isAbstract(c.getModifiers()))
+                            .map(c -> c.getName()).forEach(results::add);
                 }
             }
             writeList(name, results);
