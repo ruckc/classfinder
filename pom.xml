@@ -8,14 +8,14 @@
     </parent>
     <groupId>io.ruck</groupId>
     <artifactId>classfinder-parent</artifactId>
-    <version>1.0.8-SNAPSHOT</version>
+    <version>1.0.8</version>
     <packaging>pom</packaging>
     
     <scm>
         <connection>scm:git:git@github.com/ruckc/classfinder.git</connection>
         <developerConnection>scm:git:git@github.com/ruckc/classfinder.git</developerConnection>
         <url>scm:git:git@github.com/ruckc/classfinder</url>
-        <tag>classfinder-parent-1.0.7</tag>
+        <tag>classfinder-parent-1.0.8</tag>
     </scm>
     
     <distributionManagement>
